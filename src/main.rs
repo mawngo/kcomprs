@@ -1,3 +1,7 @@
+use crate::cli::Cli;
+
+mod cli;
+
 fn main() {
-    println!("Hello, world!");
+    Cli::execute();
 }
