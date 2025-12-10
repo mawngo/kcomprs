@@ -23,11 +23,7 @@ fn main() {
     let res = cli.execute();
     match res {
         Ok(_) => {
-            info!(
-                ms = start.elapsed().as_millis(),
-                total = res.unwrap(),
-                "Processing completed"
-            );
+            info!(ms = start.elapsed().as_millis(), "Processing completed");
         }
         Err(err) => {
             error!(error = err, "Error occurred");
