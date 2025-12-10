@@ -1,12 +1,16 @@
+use crate::kmeans::model::{Dataset, Trainer};
 use clap::Parser;
-use image::ImageReader;
+use image::{GenericImageView, ImageBuffer, ImageReader, Rgba};
 use std::cmp::min;
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::thread::JoinHandle;
-use tracing::{error, info, warn};
+use std::time::Instant;
+use std::{fs, thread};
+use tracing::{debug, error, info, warn};
+
+const PHI: f32 = 1.618033988749894848204586834365638118_f32;
 
 #[derive(Parser)]
 #[command(name = "kcomprs", about = "Reduce number of colors used in image")]
@@ -15,18 +19,17 @@ pub struct Cli {
     files: Vec<String>,
 
     #[arg(long, short = 'n', default_value = "15", help = "Number of colors to use")]
-    colors: u32,
+    colors: usize,
 
-    #[arg(long, short, default_value = ".", help = "Output directory name")]
-    output: String,
+    #[arg(long, short, help = "Output directory name")]
+    output: Option<String>,
 
     #[arg(
         long,
         short,
-        default_value = "1",
-        help = "Number of image to generate, series of output with increasing number of colors up util reached --colors parameter [min:1]"
+        help = "Number of image to generate, series of output with increasing number of colors up util reached --colors parameter"
     )]
-    series: u32,
+    series: Option<usize>,
 
     #[arg(
         long,
@@ -34,7 +37,7 @@ pub struct Cli {
         default_value = "100",
         help = "Maximum number of round before stop adjusting (number of kmeans iterations)"
     )]
-    round: u32,
+    round: usize,
 
     #[arg(long, short = 'q', action, help = "Increase speed in exchange of accuracy")]
     quick: bool,
@@ -46,7 +49,7 @@ pub struct Cli {
         long,
         short = 't',
         default_value = "8",
-        help = "Maximum number image process at a time [min:1]"
+        help = "Maximum number image process at a time [0=auto]"
     )]
     concurrency: usize,
 
@@ -68,12 +71,14 @@ pub struct Cli {
 
     #[arg(
         long,
-        default_value = "0",
-        help = "Specify quality of output jpeg compression [0-100] (set to 0 to output png)"
+        help = "Specify quality of output jpeg compression [0-100] [default 0 - output png]"
     )]
-    jpeg: u32,
+    jpeg: Option<u32>,
 
-    #[arg(long, action, help = "Enable debug mode")]
+    #[arg(long, action, help = "Generate an additional palette image")]
+    palette: bool,
+
+    #[arg(long, action, global = true, help = "Enable debug mode")]
     pub debug: bool,
 }
 
@@ -85,8 +90,14 @@ struct DecodedImage {
 }
 
 struct ProcessImageConfig {
-    colors: u32,
-    round: u32,
+    colors: usize,
+    round: usize,
+    jpeg: u32,
+    output: Option<String>,
+    overwrite: bool,
+    distance_algo: String,
+    delta: f64,
+    palette: bool,
 }
 
 impl Cli {
@@ -105,14 +116,22 @@ impl Cli {
             return Ok(());
         }
 
+        // Avoid concurrency overhead when disabled.
+        if images.len() == 1 || self.concurrency <= 1 {
+            for image in images {
+                let res = handle_image(&image);
+                if res.is_err() {
+                    error!(error = res.unwrap_err(), path = image.path, "Error processing image");
+                }
+            }
+            return Ok(());
+        }
+
         let mut threads: Vec<JoinHandle<()>> = Vec::with_capacity(min(self.concurrency, images.len()));
         // TODO: is there any other way to do this?
-        // Also, we could provide a fast path when concurrency and series is disabled, or there are only one image.
         let images = Arc::new(Mutex::new(images));
-
         for _ in 0..threads.capacity() {
             let images = Arc::clone(&images);
-            let config: ProcessImageConfig = (&self).into();
             let handle = thread::spawn(move || {
                 let mut images = images.lock().unwrap();
                 let image = images.pop();
@@ -123,7 +142,7 @@ impl Cli {
                 }
 
                 let image = image.unwrap();
-                let res = handle_image(&image, &config);
+                let res = handle_image(&image);
                 if res.is_err() {
                     error!(error = res.unwrap_err(), path = image.path, "Error processing image");
                 }
@@ -177,8 +196,8 @@ impl Cli {
             }
             let img = img.unwrap();
 
-            if self.series > 1 {
-                let mut s = self.series;
+            if !self.series.is_none() {
+                let mut s = self.series.unwrap();
                 let mut step = self.colors / s;
                 let mut start = 1;
                 if step <= 1 {
@@ -216,25 +235,165 @@ impl Into<ProcessImageConfig> for &Cli {
         ProcessImageConfig {
             colors: self.colors,
             round: self.round,
+            jpeg: self.jpeg.unwrap_or(0),
+            output: self.output.clone(),
+            overwrite: self.overwrite,
+            distance_algo: self.distance_algo.clone(),
+            delta: self.delta,
+            palette: self.palette,
         }
     }
 }
 
-fn handle_image(image: &DecodedImage, conf: &ProcessImageConfig) -> Result<(), Box<dyn Error>> {
-    let path = Path::new(&image.path);
-    let filename = path.file_name().expect("Missing filename what the fuck").to_str();
+fn handle_image(image: &DecodedImage) -> Result<(), Box<dyn Error>> {
+    let filepath = Path::new(&image.path);
+    let filename = filepath.file_name().expect("Missing filename what the fuck").to_str();
     if filename.is_none() {
-        return Err(format!("Invalid filename: {}", path.display()).into());
+        return Err(format!("Invalid filename: {}", filepath.display()).into());
     }
+    let filename = filename.unwrap();
 
     let format = image.format.extensions_str().join("|");
     info!(
-        cp = conf.colors,
-        round = conf.round,
-        img = filename.unwrap(),
+        cp = image.config.colors,
+        round = image.config.round,
+        img = filename,
         dimension = format!("{}x{}", image.img.width(), image.img.height()),
         format = format,
         "Processing image"
     );
+
+    let mut outfile_buf = PathBuf::new();
+    if !image.config.output.is_none() {
+        let output = image.config.output.as_ref();
+        outfile_buf.push(output.unwrap());
+    }
+    outfile_buf.push(filename);
+    outfile_buf.set_extension("");
+    outfile_buf.set_file_name(format!(
+        "{}.kcp{}n{}.",
+        outfile_buf.file_name().unwrap().to_str().unwrap(),
+        image.config.round,
+        image.config.colors
+    ));
+    outfile_buf.set_extension(if image.config.jpeg > 0 { "jpeg" } else { "png" });
+    let outfile = outfile_buf.to_str().unwrap();
+
+    if let Ok(metadata) = fs::metadata(outfile) {
+        info!(
+            path = outfile,
+            isDir = metadata.is_dir(),
+            overwrite = image.config.overwrite,
+            "File existed"
+        );
+        if !image.config.overwrite {
+            return Ok(());
+        }
+        if !metadata.is_file() {
+            return Ok(());
+        }
+    }
+
+    let start = Instant::now();
+    let mut matrix = Vec::with_capacity((image.img.width() * image.img.height()) as usize);
+    image.img.pixels().for_each(|pixel| {
+        matrix.push([
+            pixel.2[0] as f64,
+            pixel.2[1] as f64,
+            pixel.2[2] as f64,
+            pixel.2[3] as f64,
+        ])
+    });
+
+    debug!(
+        cp = image.config.colors,
+        img = filename,
+        round = image.config.round,
+        ms = start.elapsed().as_millis(),
+        "Start partitioning"
+    );
+    let trainer = Trainer {
+        k: image.config.colors,
+        max_iterations: image.config.round,
+        delta: image.config.delta,
+        distance_fn: match image.config.distance_algo.as_str() {
+            // TODO: enum, maybe?.
+            "EuclideanDistanceSquared" => crate::kmeans::cluster::euclidean_distance_squared,
+            _ => crate::kmeans::cluster::euclidean_distance,
+        },
+    };
+
+    let model = trainer.fit(matrix);
+
+    let width = image.img.width();
+    let mut img = ImageBuffer::<Rgba<u8>, Vec<u8>>::new(width, image.img.height());
+    for (index, number) in model.mapping.iter().enumerate() {
+        let cluster = model.centroids[*number];
+        let y = index as u32 / width;
+        let x = index as u32 % width;
+        let r = cluster[0].round() as u8;
+        let g = cluster[1].round() as u8;
+        let b = cluster[2].round() as u8;
+        let a = cluster[3].round() as u8;
+        img.put_pixel(x, y, Rgba([r, g, b, a]));
+    }
+
+    let write_result = if image.config.jpeg > 0 {
+        img.save(outfile)
+    } else {
+        img.save(outfile)
+    };
+
+    match write_result {
+        Ok(_) => {
+            let outfile = outfile.to_owned();
+            if image.config.palette {
+                gen_palette(model.centroids, outfile_buf)
+            }
+            info!(
+                out = outfile,
+                ms = start.elapsed().as_millis(),
+                iter = model.iter,
+                "Compress completed"
+            );
+        }
+        Err(err) => {
+            let err: Box<dyn Error> = err.into();
+            error!(error = err, out = outfile, "Error writing image");
+        }
+    }
     Ok(())
+}
+
+fn gen_palette(centroids: Dataset, mut outfile: PathBuf) {
+    outfile.set_extension("palette.png");
+    let outfile = outfile.to_str().unwrap();
+
+    let mut swatch_width = 400;
+    if centroids.len() > 1 {
+        swatch_width = 200 - min(7 * centroids.len() - 2, 140)
+    }
+    let width = (swatch_width * centroids.len()) as u32;
+    let height = (width as f32 / PHI) as u32;
+
+    let mut img = ImageBuffer::<Rgba<u8>, Vec<u8>>::new(width, height);
+    centroids.iter().enumerate().for_each(|(i, cluster)| {
+        let start_x = i * swatch_width;
+        let end_x = (i + 1) * swatch_width;
+        for y in 0..height {
+            for x in start_x..end_x {
+                let r = cluster[0].round() as u8;
+                let g = cluster[1].round() as u8;
+                let b = cluster[2].round() as u8;
+                let a = cluster[3].round() as u8;
+                img.put_pixel(x as u32, y, Rgba([r, g, b, a]));
+            }
+        }
+    });
+
+    let result = img.save(outfile);
+    if result.is_err() {
+        let err: Box<dyn Error> = result.unwrap_err().into();
+        error!(error = err, out = outfile, "Error palette image");
+    }
 }

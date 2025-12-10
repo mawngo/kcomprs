@@ -3,6 +3,7 @@ use std::time::Instant;
 use tracing::{error, info};
 
 mod cli;
+mod kmeans;
 
 fn main() {
     let start = Instant::now();
