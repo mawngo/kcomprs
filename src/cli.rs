@@ -1,8 +1,11 @@
 use crate::kmeans::model::{Dataset, Trainer};
 use clap::Parser;
-use image::{GenericImageView, ImageBuffer, ImageReader, Rgba};
+use image::buffer::ConvertBuffer;
+use image::codecs::jpeg::JpegEncoder;
+use image::{GenericImageView, ImageBuffer, ImageReader, RgbImage, Rgba};
 use std::cmp::min;
 use std::error::Error;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -339,7 +342,19 @@ fn handle_image(image: &DecodedImage) -> Result<(), Box<dyn Error>> {
     }
 
     let write_result = if image.config.jpeg > 0 {
-        img.save(outfile)
+        let file = File::create(outfile);
+        match file {
+            Err(err) => {
+                let err: Box<dyn Error> = err.into();
+                error!(error = err, out = outfile, "Error writing image");
+                Ok(())
+            }
+            Ok(file) => {
+                let encoder = JpegEncoder::new_with_quality(file, image.config.jpeg as u8);
+                let img: RgbImage = img.convert();
+                img.write_with_encoder(encoder)
+            }
+        }
     } else {
         img.save(outfile)
     };
