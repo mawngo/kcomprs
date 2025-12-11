@@ -4,6 +4,20 @@ Reduce the number of colors used in the image using k-mean clustering.
 
 Port of [kcomp](https://github.com/mawngo/kcomp) project to Rust for learning purposes.
 
+## Installation
+
+```shell
+cargo install kcomprs
+```
+
+## Usage
+
+compress image
+
+```shell
+> kcomprs my-image.jpeg my-second-image.png
+```
+
 ### Options
 
 ```
