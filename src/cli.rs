@@ -3,7 +3,7 @@ use clap::Parser;
 use image::buffer::ConvertBuffer;
 use image::codecs::jpeg::JpegEncoder;
 use image::{GenericImageView, ImageBuffer, ImageReader, RgbImage, Rgba};
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::error::Error;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -51,14 +51,14 @@ pub struct Cli {
     #[arg(
         long,
         short = 't',
-        default_value = "8",
+        default_value = default_concurrency(),
         help = "Maximum number image process at a time [0=auto]"
     )]
     concurrency: usize,
 
     #[arg(
         long = "kcpu",
-        default_value = "1",
+        default_value = default_k_concurrency(),
         help = "Maximum cpu used processing each image [0=auto]"
     )]
     kmeans_concurrency: usize,
@@ -91,6 +91,16 @@ pub struct Cli {
     pub debug: bool,
 }
 
+fn default_concurrency() -> String {
+    let num = num_cpus::get();
+    let default_concurrency = max(num, 1);
+    default_concurrency.to_string()
+}
+
+fn default_k_concurrency() -> String {
+    "0".to_owned()
+}
+
 struct DecodedImage {
     img: image::DynamicImage,
     format: image::ImageFormat,
@@ -111,7 +121,14 @@ struct ProcessImageConfig {
 
 impl Cli {
     pub fn new() -> Self {
+        let num = num_cpus::get();
+        let default_concurrency = min(num, 1);
         let mut cli = Self::parse();
+
+        if cli.concurrency <= 0 {
+            cli.concurrency = default_concurrency;
+        }
+
         if cli.quick {
             cli.delta = 0.01;
             cli.round = 50

@@ -27,6 +27,7 @@ Reduce number of colors used in image
 Usage: kcomprs [OPTIONS] <FILES>...
 
 Arguments:
+
   <FILES>...  Image files to compress
 
 Options:
@@ -36,9 +37,10 @@ Options:
   -i, --round <ROUND>              Maximum number of round before stop adjusting (number of kmeans iterations) [default: 100]
   -q, --quick                      Increase speed in exchange of accuracy
   -w, --overwrite                  Overwrite output if exists
-  -t, --concurrency <CONCURRENCY>  Maximum number image process at a time [0=auto] [default: 8]
+  -t, --concurrency <CONCURRENCY>  Maximum number image process at a time [0=auto] [default: 0]
+      --kcpu <KMEANS_CONCURRENCY>  Maximum cpu used processing each image [0=auto] [default: 0]
   -d, --delta <DELTA>              Delta threshold of convergence (delta between kmeans old and new centroid’s values) [default: 0.005]
-      --dalgo <dalgo>              Distance algo for kmeans [EuclideanDistance,EuclideanDistanceSquared] [default: EuclideanDistance]
+      --dalgo <DISTANCE_ALGO>      Distance algo for kmeans [EuclideanDistance,EuclideanDistanceSquared] [default: EuclideanDistance]
       --jpeg <JPEG>                Specify quality of output jpeg compression [0-100] [default 0 - output png]
       --palette                    Generate an additional palette image
       --debug                      Enable debug mode
@@ -67,8 +69,6 @@ Version `v0.2.0` is a rough port of the original Go implementation and is not op
 as the original except for:
 
 - Support for parallel K-Means cluster computation is not implemented yet (parallel file processing is still supported)
-- Does not autoconfigure the concurrency flags based on the number of CPU cores available on the machine (currently
-  fixed at 8).
 
 ### Comparison
 
