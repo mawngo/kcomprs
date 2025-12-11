@@ -1,5 +1,12 @@
 [package]
 name = "kcomprs"
+description = "Reduce the number of colors used in the image using k-mean clustering"
+readme = "README.md"
+repository = "https://github.com/mawngo/kcomprs"
+license = "MIT"
+keywords = ["image-processing", "k-means", "color-quantization"]
+categories = ["command-line-utilities", "multimedia::images"]
+exclude = ["*.png", "*.jpeg"]
 version = "0.1.0"
 edition = "2024"
 
