@@ -63,10 +63,9 @@ Options:
 
 ## Notes
 
-Version `v0.1.0` is a rough port of the original Go implementation and is not optimized. It behaves extractly the same
+Version `v0.2.0` is a rough port of the original Go implementation and is not optimized. It behaves exactly the same
 as the original except for:
 
-- Support for passing directories as arguments is not implemented yet.
 - Support for parallel K-Means cluster computation is not implemented yet (parallel file processing is still supported)
 - Does not autoconfigure the concurrency flags based on the number of CPU cores available on the machine (currently
   fixed at 8).
@@ -89,7 +88,7 @@ To run a single-threaded convert, use the following command:
 kcomp(rs) --concurrency=1 --kcpu=1 --delta=0 --overwrite <image>
 ```
 
-### Conclusion:
+### Conclusion
 
 I will still mainly use Go for my personal tools for the following reasons:
 

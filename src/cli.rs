@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Instant;
 use std::{fs, thread};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 const PHI: f32 = 1.618033988749894848204586834365638118_f32;
 
@@ -171,71 +171,113 @@ impl Cli {
     fn scan_images(&self) -> Vec<DecodedImage> {
         let mut images: Vec<DecodedImage> = Vec::with_capacity(self.files.len());
         for path in &self.files {
-            let reader = ImageReader::open(&path);
-            if reader.is_err() {
-                error!(
-                    path = &path,
-                    error = reader.err().unwrap().get_ref(),
-                    "Error opening image"
-                );
-                continue;
-            }
-            let reader = reader.unwrap().with_guessed_format();
-            if reader.is_err() {
-                error!(
-                    path = &path,
-                    error = reader.err().unwrap().get_ref(),
-                    "Error reading image"
-                );
-                continue;
-            }
-            let reader = reader.unwrap();
-
-            let format = reader.format();
-            if format.is_none() {
-                warn!(path = &path, "Unsupported image format");
-                continue;
-            }
-
-            let img = reader.decode();
-            if img.is_err() {
-                let error = img.err().unwrap();
-                error!(path = &path, error = &error as &dyn Error, "Error decoding image");
-                continue;
-            }
-            let img = img.unwrap();
-
-            if !self.series.is_none() {
-                let mut s = self.series.unwrap();
-                let mut step = self.colors / s;
-                let mut start = 1;
-                if step <= 1 {
-                    start = 2;
-                    step = 1;
-                    s = self.colors
+            match fs::metadata(path) {
+                Ok(metadata) => {
+                    if metadata.is_file() {
+                        self.read_images(path, &mut images);
+                        continue;
+                    }
+                    let paths = fs::read_dir(path).unwrap();
+                    for path in paths {
+                        if path.is_err() {
+                            let err: Box<dyn Error> = path.unwrap_err().into();
+                            debug!(error = err, "Error reading path metadata");
+                            continue;
+                        }
+                        let path = path.unwrap();
+                        match path.metadata() {
+                            Ok(metadata) => {
+                                if !metadata.is_file() {
+                                    continue;
+                                }
+                                let path = path.path();
+                                let path = path.to_str();
+                                if path.is_some() {
+                                    self.read_images(path.unwrap(), &mut images);
+                                }
+                            }
+                            Err(err) => {
+                                let err: Box<dyn Error> = err.into();
+                                error!(path = path.path().to_str(), error = err, "Error reading file metadata");
+                                continue;
+                            }
+                        }
+                    }
                 }
-
-                for i in start..s {
-                    let mut config: ProcessImageConfig = self.into();
-                    config.colors = step * i;
-                    images.push(DecodedImage {
-                        // TODO: any better way instead of cloning?
-                        img: img.clone(),
-                        format: format.unwrap(),
-                        path: path.to_string(),
-                        config,
-                    })
+                Err(err) => {
+                    let err: Box<dyn Error> = err.into();
+                    error!(path = path, error = err, "Error reading file metadata");
+                    continue;
                 }
             }
-
-            images.push(DecodedImage {
-                img,
-                format: format.unwrap(),
-                path: path.to_string(),
-                config: self.into(),
-            })
         }
         images
+    }
+
+    fn read_images(&self, path: &str, images: &mut Vec<DecodedImage>) {
+        let reader = ImageReader::open(&path);
+        if reader.is_err() {
+            error!(
+                path = &path,
+                error = reader.err().unwrap().get_ref(),
+                "Error opening image"
+            );
+            return;
+        }
+        let reader = reader.unwrap().with_guessed_format();
+        if reader.is_err() {
+            error!(
+                path = &path,
+                error = reader.err().unwrap().get_ref(),
+                "Error reading image"
+            );
+            return;
+        }
+        let reader = reader.unwrap();
+
+        let format = reader.format();
+        if format.is_none() {
+            error!(path = &path, "Not an image");
+            return;
+        }
+
+        let img = reader.decode();
+        if img.is_err() {
+            let error = img.err().unwrap();
+            error!(path = &path, error = &error as &dyn Error, "Error decoding image");
+            return;
+        }
+        let img = img.unwrap();
+
+        if !self.series.is_none() {
+            let mut s = self.series.unwrap();
+            let mut step = self.colors / s;
+            let mut start = 1;
+            if step <= 1 {
+                start = 2;
+                step = 1;
+                s = self.colors
+            }
+
+            for i in start..s {
+                let mut config: ProcessImageConfig = self.into();
+                config.colors = step * i;
+                images.push(DecodedImage {
+                    // TODO: any better way instead of cloning?
+                    img: img.clone(),
+                    format: format.unwrap(),
+                    path: path.to_string(),
+                    config,
+                })
+            }
+        }
+
+        images.push(DecodedImage {
+            img,
+            format: format.unwrap(),
+            path: path.to_string(),
+            config: self.into(),
+        })
     }
 }
 
