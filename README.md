@@ -61,3 +61,39 @@ Options:
 |---------------------------|-------------------------------------------|-------------------------------------------|
 | ![chika.jpeg](chika.jpeg) | ![chika.kcp100n5.png](chika.kcp100n5.png) | ![chika.kcp100n4.png](chika.kcp100n4.png) |
 
+## Notes
+
+Version `v0.1.0` is a rough port of the original Go implementation and is not optimized. It behaves extractly the same
+as the original except for:
+
+- Support for passing directories as arguments is not implemented yet.
+- Support for parallel K-Means cluster computation is not implemented yet (parallel file processing is still supported)
+- Does not autoconfigure the concurrency flags based on the number of CPU cores available on the machine (currently
+  fixed at 8).
+
+### Comparison
+
+- The ownership model of Rust is not that hard to grasp (maybe it's because I haven't touched lifetimes yet)
+- Rust is very verbose (Could be skill issues)
+- Of course, it is more complex than Go.
+- Rust std lib has fewer tools compared to Go. Go's standard library already provides logging and image
+  processing tools. For Rust, I had to depend on other crates.
+
+The performance improvement of the Rust implementation compared to the Go implementation is very significant. For single
+threaded execution, the Rust implementation is about 2.5 times faster, that is without any optimization yet. The reason
+for this, apart from the fact that rust is simply faster, could be that the task we are doing is CPU-bound.
+
+To run a single-threaded convert, use the following command:
+
+```
+kcomp(rs) --concurrency=1 --kcpu=1 --delta=0 --overwrite <image>
+```
+
+### Conclusion:
+
+I will still mainly use Go for my personal tools for the following reasons:
+
+- Go standard library is more battery included.
+- Most of the time, I don't need the performance boost of Rust.
+- Go is easier to sketch quick (and dirty) code for prototyping.
+- I'm just lazy.
