@@ -7,8 +7,6 @@ use std::cmp::{max, min};
 use std::error::Error;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
 use std::time::Instant;
 use std::{fs, thread};
 use tracing::{debug, error, info};
@@ -145,24 +143,15 @@ impl Cli {
             return Ok(());
         }
 
-        // TODO: is there any other way to do this?
-        let images = Arc::new(Mutex::new(images));
+        let images = images.chunks(self.concurrency);
         thread::scope(|s| {
-            for _ in 0..self.concurrency {
-                let images = Arc::clone(&images);
+            for chunk in images {
                 s.spawn(move || {
-                    let mut images = images.lock().unwrap();
-                    let image = images.pop();
-                    drop(images);
-
-                    if image.is_none() {
-                        return;
-                    }
-
-                    let image = image.unwrap();
-                    let res = handle_image(&image);
-                    if res.is_err() {
-                        error!(error = res.unwrap_err(), path = image.path, "Error processing image");
+                    for image in chunk {
+                        let res = handle_image(&image);
+                        if res.is_err() {
+                            error!(error = res.unwrap_err(), path = image.path, "Error processing image");
+                        }
                     }
                 });
             }
