@@ -57,6 +57,13 @@ pub struct Cli {
     concurrency: usize,
 
     #[arg(
+        long = "kcpu",
+        default_value = "1",
+        help = "Maximum cpu used processing each image [0=auto]"
+    )]
+    kmeans_concurrency: usize,
+
+    #[arg(
         long,
         short,
         default_value = "0.005",
@@ -65,8 +72,7 @@ pub struct Cli {
     delta: f64,
 
     #[arg(
-        name = "dalgo",
-        long,
+        long = "dalgo",
         default_value = "EuclideanDistance",
         help = "Distance algo for kmeans [EuclideanDistance,EuclideanDistanceSquared]"
     )]
