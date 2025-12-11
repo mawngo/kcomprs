@@ -56,10 +56,7 @@ pub struct Cli {
     )]
     concurrency: usize,
 
-    #[arg(
-        long = "kcpu",
-        help = "Maximum cpu used processing each image [unsupported]"
-    )]
+    #[arg(long = "kcpu", help = "Maximum cpu used processing each image [unsupported]")]
     kmeans_concurrency: Option<usize>,
 
     #[arg(
@@ -148,35 +145,28 @@ impl Cli {
             return Ok(());
         }
 
-        let mut threads: Vec<JoinHandle<()>> = Vec::with_capacity(min(self.concurrency, images.len()));
         // TODO: is there any other way to do this?
         let images = Arc::new(Mutex::new(images));
-        for _ in 0..threads.capacity() {
-            let images = Arc::clone(&images);
-            let handle = thread::spawn(move || {
-                let mut images = images.lock().unwrap();
-                let image = images.pop();
-                drop(images);
+        thread::scope(|s| {
+            for _ in 0..self.concurrency {
+                let images = Arc::clone(&images);
+                s.spawn(move || {
+                    let mut images = images.lock().unwrap();
+                    let image = images.pop();
+                    drop(images);
 
-                if image.is_none() {
-                    return;
-                }
+                    if image.is_none() {
+                        return;
+                    }
 
-                let image = image.unwrap();
-                let res = handle_image(&image);
-                if res.is_err() {
-                    error!(error = res.unwrap_err(), path = image.path, "Error processing image");
-                }
-            });
-
-            threads.push(handle);
-        }
-
-        for thread in threads {
-            thread
-                .join()
-                .expect("Error when joining thread waiting for all jobs to finish")
-        }
+                    let image = image.unwrap();
+                    let res = handle_image(&image);
+                    if res.is_err() {
+                        error!(error = res.unwrap_err(), path = image.path, "Error processing image");
+                    }
+                });
+            }
+        });
         Ok(())
     }
 
