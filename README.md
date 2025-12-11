@@ -37,8 +37,8 @@ Options:
   -i, --round <ROUND>              Maximum number of round before stop adjusting (number of kmeans iterations) [default: 100]
   -q, --quick                      Increase speed in exchange of accuracy
   -w, --overwrite                  Overwrite output if exists
-  -t, --concurrency <CONCURRENCY>  Maximum number image process at a time [0=auto] [default: 0]
-      --kcpu <KMEANS_CONCURRENCY>  Maximum cpu used processing each image [0=auto] [default: 0]
+  -t, --concurrency <CONCURRENCY>  Maximum number image process at a time [0=auto] [default: 24]
+      --kcpu <KMEANS_CONCURRENCY>  Maximum cpu used processing each image [unsupported]
   -d, --delta <DELTA>              Delta threshold of convergence (delta between kmeans old and new centroid’s values) [default: 0.005]
       --dalgo <DISTANCE_ALGO>      Distance algo for kmeans [EuclideanDistance,EuclideanDistanceSquared] [default: EuclideanDistance]
       --jpeg <JPEG>                Specify quality of output jpeg compression [0-100] [default 0 - output png]
@@ -68,7 +68,7 @@ Options:
 Version `v0.2.0` is a rough port of the original Go implementation and is not optimized. It behaves exactly the same
 as the original except for:
 
-- Support for parallel K-Means cluster computation is not implemented yet (parallel file processing is still supported)
+- Support for parallel K-Means cluster computation is not implemented due to its complexity (parallel file processing is still supported)
 
 ### Comparison
 

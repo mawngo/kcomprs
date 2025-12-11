@@ -58,10 +58,9 @@ pub struct Cli {
 
     #[arg(
         long = "kcpu",
-        default_value = default_k_concurrency(),
-        help = "Maximum cpu used processing each image [0=auto]"
+        help = "Maximum cpu used processing each image [unsupported]"
     )]
-    kmeans_concurrency: usize,
+    kmeans_concurrency: Option<usize>,
 
     #[arg(
         long,
@@ -95,10 +94,6 @@ fn default_concurrency() -> String {
     let num = num_cpus::get();
     let default_concurrency = max(num, 1);
     default_concurrency.to_string()
-}
-
-fn default_k_concurrency() -> String {
-    "0".to_owned()
 }
 
 struct DecodedImage {
