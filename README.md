@@ -1,8 +1,8 @@
 # Rusty K-Compressor
 
-Port of [kcomp](https://github.com/mawngo/kcomp) project to Rust for learning purposes.
-
 Reduce the number of colors used in the image using k-mean clustering.
+
+Port of [kcomp](https://github.com/mawngo/kcomp) project to Rust for learning purposes.
 
 ### Options
 
